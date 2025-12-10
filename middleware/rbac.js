@@ -1,33 +1,26 @@
-const { Role, Permission, RolePermission, UserRole } = require('../models');
+// middleware/rbac.js
 
-async function checkPermission(userId, permissionName) {
-  // Получаем все роли пользователя
-  const roles = await UserRole.findAll({ where: { user_id: userId } });
-  const roleIds = roles.map(r => r.role_id);
-
-  // Проверяем, есть ли нужное разрешение
-  const allowed = await RolePermission.findOne({
-    include: [{
-      model: Permission,
-      where: { action: permissionName }
-    }],
-    where: { role_id: roleIds }
-  });
-
-  return !!allowed;
-}
-
-module.exports = (permissionName) => {
-  return async (req, res, next) => {
+// Простая проверка ролей и прав доступа
+exports.rbac = (requiredPermission) => {
+  return (req, res, next) => {
     try {
-      const userId = req.user.id;
-      const hasPermission = await checkPermission(userId, permissionName);
-      if (!hasPermission) {
-        return res.status(403).json({ message: 'Доступ запрещён' });
+      const user = req.user; // из токена, добавленного authMiddleware
+
+      if (!user) {
+        return res.status(401).json({ message: 'Неавторизованный доступ' });
       }
-      next();
+
+      // Если администратор — пропускаем
+      if (user.role === 'admin') {
+        return next();
+      }
+
+      // Здесь можно расширить проверку для конкретных разрешений
+      return res.status(403).json({
+        message: `Доступ запрещён: требуется разрешение ${requiredPermission}`
+      });
     } catch (err) {
-      res.status(500).json({ error: 'Ошибка проверки разрешений' });
+      next(err);
     }
   };
 };
